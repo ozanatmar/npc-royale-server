@@ -1,6 +1,15 @@
 require("dotenv").config();
 
 const express = require("express");
+
+const cors = require("cors");
+
+app.use(cors({
+  origin: "*", // you can restrict later
+  methods: ["GET", "POST"],
+  allowedHeaders: ["Content-Type", "Authorization"]
+}));
+
 const { Pool } = require("pg");
 const { v4: uuidv4 } = require("uuid");
 const { createClient } = require("@supabase/supabase-js");
@@ -252,6 +261,7 @@ Called from Make.com reset page.
 Uses access_token provided in email link.
 */
 app.post("/auth/set-password", async (req, res) => {
+	console.log("SET PASSWORD BODY:", req.body);
   try {
     const { access_token, new_password } = req.body;
 
