@@ -261,30 +261,41 @@ Called from Make.com reset page.
 Uses access_token provided in email link.
 */
 app.post("/auth/set-password", async (req, res) => {
-	console.log("SET PASSWORD BODY:", req.body);
-  try {
-    const { access_token, new_password } = req.body;
+  console.log("SET PASSWORD BODY:", req.body);
 
-    if (!access_token || !new_password) {
-      return res.status(400).json({ error: "access_token and new_password required" });
+  try {
+    const { access_token, refresh_token, new_password } = req.body;
+
+    if (!access_token || !refresh_token || !new_password) {
+      return res.status(400).json({
+        error: "access_token, refresh_token and new_password required"
+      });
     }
 
     const supabaseUser = createClient(
       process.env.SUPABASE_URL,
-      process.env.SUPABASE_ANON_KEY,
-      {
-        global: {
-          headers: { Authorization: `Bearer ${access_token}` }
-        }
-      }
+      process.env.SUPABASE_ANON_KEY
     );
 
-    const { error } = await supabaseUser.auth.updateUser({
+    // Establish session from recovery tokens
+    const { error: sessionError } = await supabaseUser.auth.setSession({
+      access_token,
+      refresh_token
+    });
+
+    if (sessionError) {
+      console.error("SESSION ERROR:", sessionError);
+      return res.status(400).json({ error: sessionError.message });
+    }
+
+    // Update password
+    const { error: updateError } = await supabaseUser.auth.updateUser({
       password: new_password
     });
 
-    if (error) {
-      return res.status(400).json({ error: error.message });
+    if (updateError) {
+      console.error("UPDATE ERROR:", updateError);
+      return res.status(400).json({ error: updateError.message });
     }
 
     res.json({ ok: true });
@@ -294,6 +305,7 @@ app.post("/auth/set-password", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
 
 /*
 =========================================================
