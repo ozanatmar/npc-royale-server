@@ -31,6 +31,38 @@ const supabase = createClient(
 
 /*
 =========================================================
+AUTH MIDDLEWARE (VALIDATE SUPABASE JWT)
+=========================================================
+- Reads Authorization: Bearer <access_token>
+- Validates token via Supabase
+- Exposes req.userId
+*/
+async function requireAuth(req, res, next) {
+  try {
+    const authHeader = req.headers.authorization || "";
+    const parts = authHeader.split(" ");
+
+    if (parts.length !== 2 || parts[0] !== "Bearer") {
+      return res.status(401).json({ error: "Missing Bearer token" });
+    }
+
+    const accessToken = parts[1];
+
+    const { data, error } = await supabase.auth.getUser(accessToken);
+    if (error || !data?.user?.id) {
+      return res.status(401).json({ error: "Invalid or expired token" });
+    }
+
+    req.userId = data.user.id;
+    next();
+  } catch (err) {
+    console.error("AUTH MIDDLEWARE ERROR:", err);
+    res.status(500).json({ error: "Auth middleware failed" });
+  }
+}
+
+/*
+=========================================================
 DATABASE CONNECTION (Supabase Postgres via pooler)
 =========================================================
 Used for your own tables:
@@ -354,6 +386,58 @@ app.post("/match-result", async (req, res) => {
 
   } catch (err) {
     console.error("MATCH RESULT ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/*
+=========================================================
+PROFILE (Phase 19)
+=========================================================
+Returns unified player profile:
+- players: id, username, mmr
+- player_stats: matches_played, wins, kills, deaths
+Requires Authorization Bearer access_token
+*/
+app.get("/profile", requireAuth, async (req, res) => {
+  try {
+    const userId = req.userId;
+
+    const playerResult = await pool.query(
+      "SELECT id, username, mmr FROM players WHERE id = $1",
+      [userId]
+    );
+
+    if (playerResult.rows.length === 0) {
+      return res.status(404).json({ error: "Player not found" });
+    }
+
+    const statsResult = await pool.query(
+      "SELECT matches_played, wins, kills, deaths FROM player_stats WHERE player_id = $1",
+      [userId]
+    );
+
+    const player = playerResult.rows[0];
+    const stats = statsResult.rows[0] || {
+      matches_played: 0,
+      wins: 0,
+      kills: 0,
+      deaths: 0
+    };
+
+    return res.json({
+      id: player.id,
+      username: player.username,
+      mmr: player.mmr,
+      stats: {
+        matches_played: stats.matches_played,
+        wins: stats.wins,
+        kills: stats.kills,
+        deaths: stats.deaths
+      }
+    });
+  } catch (err) {
+    console.error("PROFILE ERROR:", err);
     res.status(500).json({ error: err.message });
   }
 });
