@@ -442,6 +442,51 @@ app.get("/profile", requireAuth, async (req, res) => {
   }
 });
 
+app.post("/profile/update-username", requireAuth, async (req, res) => {
+  try {
+    const userId = req.userId;
+    const { username } = req.body;
+
+    // Validate
+    if (!username || username.length < 3 || username.length > 20) {
+      return res.status(400).json({ error: "INVALID_LENGTH" });
+    }
+
+    const valid = /^[a-zA-Z0-9_]+$/.test(username);
+    if (!valid) {
+      return res.status(400).json({ error: "INVALID_FORMAT" });
+    }
+
+    // Friendly check (optional, UNIQUE constraint is still the real protection)
+    const existing = await pool.query(
+      "SELECT id FROM players WHERE username = $1",
+      [username]
+    );
+
+    if (existing.rows.length > 0) {
+      return res.status(400).json({ error: "USERNAME_TAKEN" });
+    }
+
+    await pool.query(
+      "UPDATE players SET username = $1 WHERE id = $2",
+      [username, userId]
+    );
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("UPDATE USERNAME ERROR:", err);
+
+    // unique violation fallback
+    if (err.code === "23505") {
+      return res.status(400).json({ error: "USERNAME_TAKEN" });
+    }
+
+    res.status(500).json({ error: "SERVER_ERROR" });
+  }
+});
+
+
+
 /*
 =========================================================
 SERVER START
