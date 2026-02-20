@@ -131,6 +131,11 @@ async function createPlayerRows(userId, username) {
        VALUES ($1, 1, 1, 1)`,
       [userId]
     );
+	
+	await client.query(`
+	  INSERT INTO player_equipment (player_id, slot, player_item_id)
+	  VALUES ($1, 'weapon_primary', NULL)
+	`, [userId]);
 
     await client.query("COMMIT");
 
