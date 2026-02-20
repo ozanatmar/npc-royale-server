@@ -8,7 +8,7 @@ const app = express();
 app.use(express.json());
 
 app.use(cors({
-  origin: "*", // you can restrict later
+  origin: "*", // can restrict later
   methods: ["GET", "POST"],
   allowedHeaders: ["Content-Type", "Authorization"]
 }));
@@ -27,6 +27,12 @@ It does NOT directly access your Postgres tables.
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_ANON_KEY
+);
+
+/* Admin Client */
+const supabaseAdmin = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
 /*
@@ -84,16 +90,56 @@ HELPER: CREATE PLAYER ROWS AFTER AUTH SIGNUP
 =========================================================
 We use the Supabase Auth user.id as players.id
 */
-async function createPlayerRows(authUserId, username) {
-  await pool.query(
-    "INSERT INTO players (id, username) VALUES ($1, $2)",
-    [authUserId, username]
-  );
+async function createPlayerRows(userId, username) {
+  const client = await pool.connect();
 
-  await pool.query(
-    "INSERT INTO player_stats (player_id) VALUES ($1)",
-    [authUserId]
-  );
+  try {
+    await client.query("BEGIN");
+
+    // 1) players
+    await client.query(
+      `INSERT INTO players (id, username)
+       VALUES ($1, $2)`,
+      [userId, username]
+    );
+
+    // 2) player_stats
+    await client.query(
+      `INSERT INTO player_stats (player_id)
+       VALUES ($1)`,
+      [userId]
+    );
+
+    // 3) player_wallets (cash)
+    const cashCurrency = await client.query(
+      `SELECT id FROM currencies WHERE key = 'cash' LIMIT 1`
+    );
+
+    if (cashCurrency.rowCount === 0) {
+      throw new Error("CASH_CURRENCY_NOT_FOUND");
+    }
+
+    await client.query(
+      `INSERT INTO player_wallets (player_id, currency_id, balance)
+       VALUES ($1, $2, $3)`,
+      [userId, cashCurrency.rows[0].id, 0] // starting cash = 0
+    );
+
+    // 4) player_npcs
+    await client.query(
+      `INSERT INTO player_npcs (player_id, strength, perception, agility)
+       VALUES ($1, 1, 1, 1)`,
+      [userId]
+    );
+
+    await client.query("COMMIT");
+
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 /*
@@ -128,9 +174,12 @@ app.post("/auth/signup", async (req, res) => {
     const { email, password, username } = req.body;
 
     if (!email || !password || !username) {
-      return res.status(400).json({ error: "email, password, username required" });
+      return res.status(400).json({
+        error: "email, password, username required"
+      });
     }
 
+    // Create Supabase auth user
     const { data, error } = await supabase.auth.signUp({
       email,
       password
@@ -146,7 +195,20 @@ app.post("/auth/signup", async (req, res) => {
       return res.status(500).json({ error: "Auth user not created" });
     }
 
-    await createPlayerRows(user.id, username);
+    try {
+      // Initialize DB rows (transaction)
+      await createPlayerRows(user.id, username);
+
+    } catch (dbError) {
+      console.error("DB INIT FAILED:", dbError);
+
+      // STRICT MODE: delete auth user
+      await supabaseAdmin.auth.admin.deleteUser(user.id);
+
+      return res.status(500).json({
+        error: "ACCOUNT_INIT_FAILED"
+      });
+    }
 
     res.json({
       ok: true,
@@ -484,8 +546,6 @@ app.post("/profile/update-username", requireAuth, async (req, res) => {
     res.status(500).json({ error: "SERVER_ERROR" });
   }
 });
-
-
 
 /*
 =========================================================

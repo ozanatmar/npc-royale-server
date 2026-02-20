@@ -1,0 +1,125 @@
+{
+  "new_user_null_equipment": {
+    "player": {
+      "id": "00000000-0000-0000-0000-000000000001",
+      "username": "new_user",
+      "mmr": 1200
+    },
+    "stats": {
+      "matches_played": 0,
+      "wins": 0,
+      "kills": 0,
+      "deaths": 0
+    },
+    "npc": {
+      "strength": 1,
+      "perception": 1,
+      "agility": 1
+    },
+    "wallet": {
+      "cash": 0
+    },
+    "equipment": {
+      "weapon_primary": {
+        "player_item_id": null,
+        "item_def_key": null
+      }
+    },
+    "inventory": [],
+    "store": [
+      {
+        "item_def_id": 101,
+        "item_def_key": "weapon_rifle_basic",
+        "name": "Basic Rifle",
+        "icon_key": "ico_weapon_rifle_basic",
+        "price_cash": 150
+      },
+      {
+        "item_def_id": 102,
+        "item_def_key": "weapon_sniper_basic",
+        "name": "Basic Sniper",
+        "icon_key": "ico_weapon_sniper_basic",
+        "price_cash": 250
+      },
+      {
+        "item_def_id": 103,
+        "item_def_key": "weapon_smg_basic",
+        "name": "Basic SMG",
+        "icon_key": "ico_weapon_smg_basic",
+        "price_cash": 120
+      }
+    ]
+  },
+  "user_with_equipped_weapon_and_inventory": {
+    "player": {
+      "id": "00000000-0000-0000-0000-000000000002",
+      "username": "ozan",
+      "mmr": 1200
+    },
+    "stats": {
+      "matches_played": 20,
+      "wins": 3,
+      "kills": 57,
+      "deaths": 17
+    },
+    "npc": {
+      "strength": 3,
+      "perception": 2,
+      "agility": 4
+    },
+    "wallet": {
+      "cash": 310
+    },
+    "equipment": {
+      "weapon_primary": {
+        "player_item_id": "11111111-1111-1111-1111-111111111111",
+        "item_def_key": "weapon_rifle_basic"
+      }
+    },
+    "inventory": [
+      {
+        "player_item_id": "11111111-1111-1111-1111-111111111111",
+        "item_def_id": 101,
+        "item_def_key": "weapon_rifle_basic",
+        "base_props": {
+          "price_cash": 150,
+          "damage": 10,
+          "fire_rate": 0.12
+        }
+      },
+      {
+        "player_item_id": "22222222-2222-2222-2222-222222222222",
+        "item_def_id": 101,
+        "item_def_key": "weapon_rifle_basic",
+        "base_props": {
+          "price_cash": 150,
+          "damage": 10,
+          "fire_rate": 0.12
+        }
+      }
+    ],
+    "store": [
+      {
+        "item_def_id": 101,
+        "item_def_key": "weapon_rifle_basic",
+        "name": "Basic Rifle",
+        "icon_key": "ico_weapon_rifle_basic",
+        "price_cash": 150
+      },
+      {
+        "item_def_id": 102,
+        "item_def_key": "weapon_sniper_basic",
+        "name": "Basic Sniper",
+        "icon_key": "ico_weapon_sniper_basic",
+        "price_cash": 250
+      },
+      {
+        "item_def_id": 103,
+        "item_def_key": "weapon_smg_basic",
+        "name": "Basic SMG",
+        "icon_key": "ico_weapon_smg_basic",
+        "price_cash": 120
+      }
+    ]
+  }
+}
