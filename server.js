@@ -1,3 +1,5 @@
+console.log("NEW SERVER VERSION");
+
 require("dotenv").config();
 
 const express = require("express");
