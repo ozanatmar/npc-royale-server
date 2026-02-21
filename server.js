@@ -489,18 +489,36 @@ app.get("/profile", requireAuth, async (req, res) => {
     if (statsResult.rowCount === 0) {
       return res.status(500).json({ error: "BROKEN_ACCOUNT_STATE" });
     }
+	
+	const walletResult = await pool.query(
+	  `
+	  SELECT pw.balance
+	  FROM player_wallets pw
+	  JOIN currencies c ON c.id = pw.currency_id
+	  WHERE pw.player_id = $1 AND c.key = 'cash'
+	  `,
+	  [userId]
+	);
 
+	if (walletResult.rowCount === 0) {
+	  return res.status(500).json({ error: "BROKEN_ACCOUNT_STATE" });
+	}
+
+	const wallet = walletResult.rows[0];
     const player = playerResult.rows[0];
     const stats = statsResult.rows[0];
 
-    return res.json({
-      player: {
-        id: player.id,
-        username: player.username,
-        mmr: player.mmr
-      },
-      stats
-    });
+	return res.json({
+	  player: {
+		id: player.id,
+		username: player.username,
+		mmr: player.mmr
+	  },
+	  stats,
+	  wallet: {
+		cash: wallet.balance
+	  }
+	});
 
   } catch (err) {
     console.error("PROFILE ERROR:", err);
