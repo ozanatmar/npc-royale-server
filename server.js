@@ -469,6 +469,10 @@ Returns unified player profile:
 Requires Authorization Bearer access_token
 */
 app.get("/profile", requireAuth, async (req, res) => {
+  res.json({ ok: true, userId: req.userId });
+});
+/*
+app.get("/profile", requireAuth, async (req, res) => {
   try {
     const userId = req.userId;
 
@@ -623,6 +627,7 @@ app.get("/profile", requireAuth, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+*/
 
 app.post("/profile/update-username", requireAuth, async (req, res) => {
   try {
