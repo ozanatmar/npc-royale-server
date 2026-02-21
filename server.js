@@ -528,6 +528,26 @@ app.get("/profile", requireAuth, async (req, res) => {
 	  return res.status(500).json({ error: "BROKEN_ACCOUNT_STATE" });
 	}
 
+	const inventoryResult = await pool.query(
+	  `
+	  SELECT
+		pi.id AS player_item_id,
+		idf.id AS item_def_id,
+		idf.key AS item_def_key,
+		idf.base_props
+	  FROM player_items pi
+	  JOIN item_defs idf ON idf.id = pi.item_def_id
+	  WHERE pi.player_id = $1
+	  `,
+	  [userId]
+	);
+
+	const inventory = inventoryResult.rows.map(row => ({
+	  player_item_id: row.player_item_id,
+	  item_def_id: row.item_def_id,
+	  item_def_key: row.item_def_key,
+	  base_props: row.base_props
+	}));
 	const equipmentRow = equipmentResult.rows[0];
 	const npc = npcResult.rows[0];
 	const wallet = walletResult.rowCount > 0 ? walletResult.rows[0] : { balance: 0 };
@@ -554,7 +574,8 @@ app.get("/profile", requireAuth, async (req, res) => {
 		  player_item_id: equipmentRow.player_item_id || null,
 		  item_def_key: equipmentRow.item_def_key || null
 		}
-	  }
+	  },
+	  inventory
 	});
 
   } catch (err) {
