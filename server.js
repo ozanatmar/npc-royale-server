@@ -107,15 +107,52 @@ const pool = new Pool({
 
 /*
 =========================================================
+HELPER: GENERATE RANDOM USERNAME
+=========================================================
+*/
+function generateRandomUsername() {
+  const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+  let suffix = "";
+
+  for (let i = 0; i < 6; i++) {
+    suffix += chars[Math.floor(Math.random() * chars.length)];
+  }
+
+  return `user${suffix}`;
+}
+
+
+/*
+=========================================================
 HELPER: CREATE PLAYER ROWS AFTER AUTH SIGNUP
 =========================================================
 We use the Supabase Auth user.id as players.id
 */
-async function createPlayerRows(userId, username) {
+async function createPlayerRows(userId) {
   const client = await pool.connect();
 
   try {
     await client.query("BEGIN");
+	
+	// ---------- Generate unique username ----------
+    let username;
+    let attempts = 0;
+
+    while (true) {
+      username = generateRandomUsername();
+
+      const exists = await client.query(
+        `SELECT 1 FROM players WHERE username = $1 LIMIT 1`,
+        [username]
+      );
+
+      if (exists.rowCount === 0) break;
+
+      attempts++;
+      if (attempts > 10) {
+        throw new Error("USERNAME_GENERATION_FAILED");
+      }
+    }
 
     // 1) players
     await client.query(
@@ -153,12 +190,15 @@ async function createPlayerRows(userId, username) {
       [userId]
     );
 	
+    // 5) player_equipment	
 	await client.query(`
 	  INSERT INTO player_equipment (player_id, slot, player_item_id)
 	  VALUES ($1, 'weapon_primary', NULL)
 	`, [userId]);
 
     await client.query("COMMIT");
+	
+	return username; // log username
 
   } catch (err) {
     await client.query("ROLLBACK");
@@ -167,6 +207,14 @@ async function createPlayerRows(userId, username) {
     client.release();
   }
 }
+
+
+
+
+
+
+
+
 
 /*
 =========================================================
