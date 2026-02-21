@@ -472,24 +472,34 @@ app.get("/profile", requireAuth, async (req, res) => {
   try {
     const userId = req.userId;
 
-    console.log("PROFILE START:", userId);
-
     const playerResult = await pool.query(
       "SELECT id, username, mmr FROM players WHERE id = $1",
       [userId]
     );
-    console.log("PLAYERS OK");
+
+    if (playerResult.rowCount === 0) {
+      return res.status(404).json({ error: "Player not found" });
+    }
 
     const statsResult = await pool.query(
       "SELECT matches_played, wins, kills, deaths FROM player_stats WHERE player_id = $1",
       [userId]
     );
-    console.log("STATS OK");
 
-    res.json({
-      ok: true,
-      playerRows: playerResult.rows,
-      statsRows: statsResult.rows
+    if (statsResult.rowCount === 0) {
+      return res.status(500).json({ error: "BROKEN_ACCOUNT_STATE" });
+    }
+
+    const player = playerResult.rows[0];
+    const stats = statsResult.rows[0];
+
+    return res.json({
+      player: {
+        id: player.id,
+        username: player.username,
+        mmr: player.mmr
+      },
+      stats
     });
 
   } catch (err) {
