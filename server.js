@@ -461,155 +461,26 @@ app.post("/match-result", async (req, res) => {
 
 /*
 =========================================================
-PROFILE (Phase 19)
+PROFILE (FAT PROFILE ENDPOINT)
+Returns complete player state required by client:
+- player identity
+- stats
+- wallet
+- npc attributes
+- equipment
+- inventory
+- store catalog
 =========================================================
-Returns unified player profile:
-- players: id, username, mmr
-- player_stats: matches_played, wins, kills, deaths
-Requires Authorization Bearer access_token
 */
 app.get("/profile", requireAuth, async (req, res) => {
   try {
     const userId = req.userId;
 
-    const playerResult = await pool.query(
-      "SELECT id, username, mmr FROM players WHERE id = $1",
-      [userId]
-    );
-
-    if (playerResult.rowCount === 0) {
-      return res.status(404).json({ error: "Player not found" });
-    }
-
-    const statsResult = await pool.query(
-      "SELECT matches_played, wins, kills, deaths FROM player_stats WHERE player_id = $1",
-      [userId]
-    );
-
-    if (statsResult.rowCount === 0) {
-      return res.status(500).json({ error: "BROKEN_ACCOUNT_STATE" });
-    }
-	
-	const walletResult = await pool.query(
-	  `
-	  SELECT pw.balance
-	  FROM player_wallets pw
-	  JOIN currencies c ON c.id = pw.currency_id
-	  WHERE pw.player_id = $1 AND c.key = 'cash'
-	  `,
-	  [userId]
-	);
-
-	if (walletResult.rowCount === 0) {
-	  return res.status(500).json({ error: "BROKEN_ACCOUNT_STATE" });
-	}
-	
-	const npcResult = await pool.query(
-	  "SELECT strength, perception, agility FROM player_npcs WHERE player_id = $1",
-	  [userId]
-	);
-
-	if (npcResult.rowCount === 0) {
-	  return res.status(500).json({ error: "BROKEN_ACCOUNT_STATE" });
-	}
-	
-	const equipmentResult = await pool.query(
-	  `
-	  SELECT pe.player_item_id, idf.key AS item_def_key
-	  FROM player_equipment pe
-	  LEFT JOIN player_items pi ON pi.id = pe.player_item_id
-	  LEFT JOIN item_defs idf ON idf.id = pi.item_def_id
-	  WHERE pe.player_id = $1 AND pe.slot = 'weapon_primary'
-	  `,
-	  [userId]
-	);
-
-	if (equipmentResult.rowCount === 0) {
-	  return res.status(500).json({ error: "BROKEN_ACCOUNT_STATE" });
-	}
-
-	const inventoryResult = await pool.query(
-	  `
-	  SELECT
-		pi.id AS player_item_id,
-		idf.id AS item_def_id,
-		idf.key AS item_def_key,
-		idf.base_props
-	  FROM player_items pi
-	  JOIN item_defs idf ON idf.id = pi.item_def_id
-	  WHERE pi.player_id = $1
-	  `,
-	  [userId]
-	);
-	const storeResult = await pool.query(
-	  `
-	  SELECT
-		id,
-		key,
-		base_props
-	  FROM item_defs
-	  WHERE is_active = true
-		AND category = 'weapon'
-	  ORDER BY id
-	  `
-	);
-
-	const store = storeResult.rows.map(row => ({
-	  item_def_id: row.id,
-	  item_def_key: row.key,
-	  name: row.base_props?.name || row.key,
-	  icon_key: row.base_props?.icon_key || null,
-	  price_cash: row.base_props?.price_cash || 0
-	}));
-
-	const inventory = inventoryResult.rows.map(row => ({
-	  player_item_id: row.player_item_id,
-	  item_def_id: row.item_def_id,
-	  item_def_key: row.item_def_key,
-	  base_props: row.base_props
-	}));
-	const equipmentRow = equipmentResult.rows[0];
-	const npc = npcResult.rows[0];
-	const wallet = walletResult.rowCount > 0 ? walletResult.rows[0] : { balance: 0 };
-    const player = playerResult.rows[0];
-    const stats = statsResult.rows[0];
-
-	return res.json({
-	  player: {
-		id: player.id,
-		username: player.username,
-		mmr: player.mmr
-	  },
-	  stats,
-	  wallet: {
-		cash: wallet.balance
-	  },
-	  npc: {
-		strength: npc.strength,
-		perception: npc.perception,
-		agility: npc.agility
-	  },
-	  equipment: {
-		weapon_primary: {
-		  player_item_id: equipmentRow.player_item_id || null,
-		  item_def_key: equipmentRow.item_def_key || null
-		}
-	  },
-	  inventory,
-		store
-	});
-
-  } catch (err) {
-    console.error("PROFILE ERROR:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
-/*
-app.get("/profile", requireAuth, async (req, res) => {
-  try {
-    const userId = req.userId;
-
-    // 1) PLAYER
+    /*
+    =========================================================
+    1) PLAYER CORE
+    =========================================================
+    */
     const playerResult = await pool.query(
       "SELECT id, username, mmr FROM players WHERE id = $1",
       [userId]
@@ -621,7 +492,11 @@ app.get("/profile", requireAuth, async (req, res) => {
 
     const player = playerResult.rows[0];
 
-    // 2) STATS
+    /*
+    =========================================================
+    2) PLAYER STATS
+    =========================================================
+    */
     const statsResult = await pool.query(
       "SELECT matches_played, wins, kills, deaths FROM player_stats WHERE player_id = $1",
       [userId]
@@ -633,19 +508,11 @@ app.get("/profile", requireAuth, async (req, res) => {
 
     const stats = statsResult.rows[0];
 
-    // 3) NPC
-    const npcResult = await pool.query(
-      "SELECT strength, perception, agility FROM player_npcs WHERE player_id = $1",
-      [userId]
-    );
-
-    if (npcResult.rowCount === 0) {
-      return res.status(500).json({ error: "BROKEN_ACCOUNT_STATE" });
-    }
-
-    const npc = npcResult.rows[0];
-
-    // 4) WALLET (cash)
+    /*
+    =========================================================
+    3) WALLET (SOFT CURRENCY: CASH)
+    =========================================================
+    */
     const walletResult = await pool.query(
       `
       SELECT pw.balance
@@ -662,7 +529,27 @@ app.get("/profile", requireAuth, async (req, res) => {
 
     const wallet = walletResult.rows[0];
 
-    // 5) EQUIPMENT
+    /*
+    =========================================================
+    4) NPC ATTRIBUTES
+    =========================================================
+    */
+    const npcResult = await pool.query(
+      "SELECT strength, perception, agility FROM player_npcs WHERE player_id = $1",
+      [userId]
+    );
+
+    if (npcResult.rowCount === 0) {
+      return res.status(500).json({ error: "BROKEN_ACCOUNT_STATE" });
+    }
+
+    const npc = npcResult.rows[0];
+
+    /*
+    =========================================================
+    5) EQUIPMENT (PRIMARY WEAPON ONLY FOR MVP)
+    =========================================================
+    */
     const equipmentResult = await pool.query(
       `
       SELECT pe.player_item_id, idf.key AS item_def_key
@@ -680,7 +567,11 @@ app.get("/profile", requireAuth, async (req, res) => {
 
     const equipmentRow = equipmentResult.rows[0];
 
-    // 6) INVENTORY
+    /*
+    =========================================================
+    6) INVENTORY (OWNED ITEMS)
+    =========================================================
+    */
     const inventoryResult = await pool.query(
       `
       SELECT
@@ -702,7 +593,11 @@ app.get("/profile", requireAuth, async (req, res) => {
       base_props: row.base_props
     }));
 
-    // 7) STORE
+    /*
+    =========================================================
+    7) STORE CATALOG (READ-ONLY)
+    =========================================================
+    */
     const storeResult = await pool.query(
       `
       SELECT
@@ -724,26 +619,25 @@ app.get("/profile", requireAuth, async (req, res) => {
       price_cash: row.base_props?.price_cash || 0
     }));
 
-    // 8) FINAL RESPONSE
+    /*
+    =========================================================
+    FINAL RESPONSE
+    =========================================================
+    */
     return res.json({
       player: {
         id: player.id,
         username: player.username,
         mmr: player.mmr
       },
-      stats: {
-        matches_played: stats.matches_played,
-        wins: stats.wins,
-        kills: stats.kills,
-        deaths: stats.deaths
+      stats,
+      wallet: {
+        cash: wallet.balance
       },
       npc: {
         strength: npc.strength,
         perception: npc.perception,
         agility: npc.agility
-      },
-      wallet: {
-        cash: wallet.balance
       },
       equipment: {
         weapon_primary: {
@@ -760,7 +654,187 @@ app.get("/profile", requireAuth, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+
+
+/*
+=========================================================
+STORE: BUY ITEM
+=========================================================
+- Auth required
+- Allows multi-instance weapons
+- Deducts cash
+- Inserts new player_items row
+- Fully transactional
 */
+app.post("/store/buy", requireAuth, async (req, res) => {
+  const userId = req.userId;
+  const { item_def_id } = req.body;
+
+  if (!item_def_id || !Number.isInteger(item_def_id)) {
+    return res.status(400).json({ error: "INVALID_ITEM_ID" });
+  }
+
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    /*
+    =========================================================
+    1) VALIDATE ITEM
+    =========================================================
+    */
+    const itemResult = await client.query(
+      `
+      SELECT id, category, is_active, base_props
+      FROM item_defs
+      WHERE id = $1
+      `,
+      [item_def_id]
+    );
+
+    if (itemResult.rowCount === 0) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "ITEM_NOT_FOUND" });
+    }
+
+    const item = itemResult.rows[0];
+
+    if (!item.is_active) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ error: "ITEM_INACTIVE" });
+    }
+
+    if (item.category !== "weapon") {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ error: "INVALID_ITEM" });
+    }
+
+    const price = item.base_props?.price_cash;
+
+    if (!Number.isInteger(price) || price < 0) {
+      await client.query("ROLLBACK");
+      return res.status(500).json({ error: "INVALID_PRICE" });
+    }
+
+    /*
+    =========================================================
+    2) LOCK WALLET ROW
+    =========================================================
+    */
+    const walletCurrency = await client.query(
+      `SELECT id FROM currencies WHERE key = 'cash' LIMIT 1`
+    );
+
+    if (walletCurrency.rowCount === 0) {
+      throw new Error("CASH_CURRENCY_NOT_FOUND");
+    }
+
+    const currencyId = walletCurrency.rows[0].id;
+
+    const walletResult = await client.query(
+      `
+      SELECT balance
+      FROM player_wallets
+      WHERE player_id = $1 AND currency_id = $2
+      FOR UPDATE
+      `,
+      [userId, currencyId]
+    );
+
+    if (walletResult.rowCount === 0) {
+      await client.query("ROLLBACK");
+      return res.status(500).json({ error: "BROKEN_ACCOUNT_STATE" });
+    }
+
+    const currentBalance = Number(walletResult.rows[0].balance);
+
+    if (currentBalance < price) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ error: "NOT_ENOUGH_CASH" });
+    }
+
+    /*
+    =========================================================
+    3) DEDUCT CASH
+    =========================================================
+    */
+    const newBalance = currentBalance - price;
+
+    await client.query(
+      `
+      UPDATE player_wallets
+      SET balance = $1
+      WHERE player_id = $2 AND currency_id = $3
+      `,
+      [newBalance, userId, currencyId]
+    );
+
+    /*
+    =========================================================
+    4) INSERT OWNED ITEM (MULTI-INSTANCE ALLOWED)
+    =========================================================
+    */
+    const insertItem = await client.query(
+      `
+      INSERT INTO player_items (player_id, item_def_id)
+      VALUES ($1, $2)
+      RETURNING id
+      `,
+      [userId, item_def_id]
+    );
+
+    const newPlayerItemId = insertItem.rows[0].id;
+
+    await client.query("COMMIT");
+
+    /*
+    =========================================================
+    SUCCESS RESPONSE
+    =========================================================
+    */
+    return res.json({
+      ok: true,
+      wallet: {
+        cash: newBalance
+      },
+      new_item: {
+        player_item_id: newPlayerItemId,
+        item_def_id: item_def_id,
+        item_def_key: item.key
+      }
+    });
+
+  } catch (err) {
+    await client.query("ROLLBACK");
+    console.error("STORE BUY ERROR:", err);
+    return res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 app.post("/profile/update-username", requireAuth, async (req, res) => {
   try {
