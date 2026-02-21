@@ -541,6 +541,26 @@ app.get("/profile", requireAuth, async (req, res) => {
 	  `,
 	  [userId]
 	);
+	const storeResult = await pool.query(
+	  `
+	  SELECT
+		id,
+		key,
+		base_props
+	  FROM item_defs
+	  WHERE is_active = true
+		AND category = 'weapon'
+	  ORDER BY id
+	  `
+	);
+
+	const store = storeResult.rows.map(row => ({
+	  item_def_id: row.id,
+	  item_def_key: row.key,
+	  name: row.base_props?.name || row.key,
+	  icon_key: row.base_props?.icon_key || null,
+	  price_cash: row.base_props?.price_cash || 0
+	}));
 
 	const inventory = inventoryResult.rows.map(row => ({
 	  player_item_id: row.player_item_id,
@@ -575,7 +595,8 @@ app.get("/profile", requireAuth, async (req, res) => {
 		  item_def_key: equipmentRow.item_def_key || null
 		}
 	  },
-	  inventory
+	  inventory,
+		store
 	});
 
   } catch (err) {
