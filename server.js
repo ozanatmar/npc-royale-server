@@ -468,7 +468,7 @@ Returns unified player profile:
 - player_stats: matches_played, wins, kills, deaths
 Requires Authorization Bearer access_token
 */
-app.get("/profile", requireAuth, async (req, res) => {
+/*app.get("/profile", requireAuth, async (req, res) => {
   try {
     const userId = req.userId;
 
@@ -504,7 +504,7 @@ app.get("/profile", requireAuth, async (req, res) => {
 	  return res.status(500).json({ error: "BROKEN_ACCOUNT_STATE" });
 	}
 
-	const wallet = walletResult.rows[0];
+	const wallet = walletResult.rowCount > 0 ? walletResult.rows[0] : { balance: 0 };
     const player = playerResult.rows[0];
     const stats = statsResult.rows[0];
 
@@ -524,8 +524,8 @@ app.get("/profile", requireAuth, async (req, res) => {
     console.error("PROFILE ERROR:", err);
     res.status(500).json({ error: err.message });
   }
-});
-/*
+});*/
+
 app.get("/profile", requireAuth, async (req, res) => {
   try {
     const userId = req.userId;
@@ -681,7 +681,7 @@ app.get("/profile", requireAuth, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-*/
+
 
 app.post("/profile/update-username", requireAuth, async (req, res) => {
   try {
