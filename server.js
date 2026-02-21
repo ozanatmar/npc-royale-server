@@ -430,34 +430,165 @@ app.get("/match-config", async (req, res) => {
   }
 });
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /*
 =========================================================
-MATCH RESULT (unchanged)
+MATCH RESULT (MVP)
 =========================================================
+- Auth required (JWT)
+- Ignores client-sent playerId (uses req.userId)
+- Body: { kills: int, placement: int }
+- win is derived: placement === 1
+- deaths rule: ONLY on loss (NPC died)
+- reward formula (locked):
+  reward = (win?200:0) + (kills*10) + max(0, 101-placement)
+- Transaction: update stats + add cash
 */
-app.post("/match-result", async (req, res) => {
-  try {
-    const { playerId, kills, win } = req.body;
+app.post("/match-result", requireAuth, async (req, res) => {
+  const userId = req.userId;
 
-    await pool.query(
+  // Parse and validate as integers (reject floats/strings)
+  const kills = req.body?.kills;
+  const placement = req.body?.placement;
+
+  if (!Number.isInteger(kills) || !Number.isInteger(placement)) {
+    return res.status(400).json({ error: "INVALID_INPUT" });
+  }
+
+  if (kills < 0 || kills > 99) {
+    return res.status(400).json({ error: "INVALID_KILLS" });
+  }
+
+  if (placement < 1 || placement > 100) {
+    return res.status(400).json({ error: "INVALID_PLACEMENT" });
+  }
+
+  const win = placement === 1;
+
+  const rewardCash =
+    (win ? 200 : 0) +
+    (kills * 10) +
+    Math.max(0, 101 - placement);
+
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    // Lock stats row
+    const statsLock = await client.query(
+      `SELECT 1 FROM player_stats WHERE player_id = $1 FOR UPDATE`,
+      [userId]
+    );
+    if (statsLock.rowCount === 0) {
+      await client.query("ROLLBACK");
+      return res.status(500).json({ error: "BROKEN_ACCOUNT_STATE" });
+    }
+
+    // Lock cash wallet row
+    const currencyRow = await client.query(
+      `SELECT id FROM currencies WHERE key = 'cash' LIMIT 1`
+    );
+    if (currencyRow.rowCount === 0) {
+      throw new Error("CASH_CURRENCY_NOT_FOUND");
+    }
+    const currencyId = currencyRow.rows[0].id;
+
+    const walletRow = await client.query(
+      `
+      SELECT balance
+      FROM player_wallets
+      WHERE player_id = $1 AND currency_id = $2
+      FOR UPDATE
+      `,
+      [userId, currencyId]
+    );
+    if (walletRow.rowCount === 0) {
+      await client.query("ROLLBACK");
+      return res.status(500).json({ error: "BROKEN_ACCOUNT_STATE" });
+    }
+
+    const currentBalance = Number(walletRow.rows[0].balance);
+    const newBalance = currentBalance + rewardCash;
+
+    // Update stats (deaths ONLY on loss)
+    await client.query(
       `
       UPDATE player_stats
-      SET 
+      SET
         matches_played = matches_played + 1,
-        kills = kills + $1,
-        wins = wins + $2
-      WHERE player_id = $3
+        wins = wins + $1,
+        kills = kills + $2,
+        deaths = deaths + $3
+      WHERE player_id = $4
       `,
-      [kills || 0, win ? 1 : 0, playerId]
+      [
+        win ? 1 : 0,
+        kills,
+        win ? 0 : 1,
+        userId
+      ]
     );
 
-    res.json({ ok: true });
+    // Add cash
+    await client.query(
+      `
+      UPDATE player_wallets
+      SET balance = $1
+      WHERE player_id = $2 AND currency_id = $3
+      `,
+      [newBalance, userId, currencyId]
+    );
+
+    await client.query("COMMIT");
+
+    return res.json({
+      ok: true,
+      reward_cash: rewardCash,
+      wallet: { cash: newBalance }
+    });
 
   } catch (err) {
+    await client.query("ROLLBACK");
     console.error("MATCH RESULT ERROR:", err);
-    res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 /*
 =========================================================
@@ -632,7 +763,7 @@ app.get("/profile", requireAuth, async (req, res) => {
       },
       stats,
       wallet: {
-        cash: wallet.balance
+        cash: Number(wallet.balance)
       },
       npc: {
         strength: npc.strength,
@@ -654,6 +785,13 @@ app.get("/profile", requireAuth, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+
+
+
+
+
+
 
 
 
