@@ -657,6 +657,8 @@ app.get("/profile", requireAuth, async (req, res) => {
 
 
 
+
+
 /*
 =========================================================
 STORE: BUY ITEM
@@ -814,6 +816,111 @@ app.post("/store/buy", requireAuth, async (req, res) => {
     client.release();
   }
 });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/*
+=========================================================
+EQUIPMENT: EQUIP ITEM
+=========================================================
+- Auth required
+- MVP: only weapon_primary slot
+- Validates ownership
+- Validates item category = weapon
+*/
+app.post("/equipment/equip", requireAuth, async (req, res) => {
+  const userId = req.userId;
+  const { slot, player_item_id } = req.body;
+
+  /*
+  =========================================================
+  1) BASIC VALIDATION
+  =========================================================
+  */
+  if (!slot || typeof slot !== "string") {
+    return res.status(400).json({ error: "INVALID_SLOT" });
+  }
+
+  if (!player_item_id || typeof player_item_id !== "string") {
+    return res.status(400).json({ error: "INVALID_ITEM" });
+  }
+
+  if (slot !== "weapon_primary") {
+    return res.status(400).json({ error: "INVALID_SLOT" });
+  }
+
+  try {
+
+    /*
+    =========================================================
+    2) VALIDATE OWNERSHIP + LOAD ITEM DEF
+    =========================================================
+    */
+    const itemResult = await pool.query(
+      `
+      SELECT 
+        pi.id AS player_item_id,
+        idf.category
+      FROM player_items pi
+      JOIN item_defs idf ON idf.id = pi.item_def_id
+      WHERE pi.id = $1 AND pi.player_id = $2
+      `,
+      [player_item_id, userId]
+    );
+
+    if (itemResult.rowCount === 0) {
+      return res.status(400).json({ error: "ITEM_NOT_OWNED" });
+    }
+
+    const item = itemResult.rows[0];
+
+    if (item.category !== "weapon") {
+      return res.status(400).json({ error: "INVALID_ITEM" });
+    }
+
+    /*
+    =========================================================
+    3) UPDATE EQUIPMENT SLOT
+    =========================================================
+    */
+    const updateResult = await pool.query(
+      `
+      UPDATE player_equipment
+      SET player_item_id = $1
+      WHERE player_id = $2 AND slot = $3
+      `,
+      [player_item_id, userId, slot]
+    );
+
+    if (updateResult.rowCount === 0) {
+      return res.status(500).json({ error: "BROKEN_ACCOUNT_STATE" });
+    }
+
+    /*
+    =========================================================
+    SUCCESS
+    =========================================================
+    */
+    return res.json({ ok: true });
+
+  } catch (err) {
+    console.error("EQUIP ERROR:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+
 
 
 
