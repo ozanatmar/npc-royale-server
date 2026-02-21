@@ -503,7 +503,17 @@ app.get("/profile", requireAuth, async (req, res) => {
 	if (walletResult.rowCount === 0) {
 	  return res.status(500).json({ error: "BROKEN_ACCOUNT_STATE" });
 	}
+	
+	const npcResult = await pool.query(
+	  "SELECT strength, perception, agility FROM player_npcs WHERE player_id = $1",
+	  [userId]
+	);
 
+	if (npcResult.rowCount === 0) {
+	  return res.status(500).json({ error: "BROKEN_ACCOUNT_STATE" });
+	}
+
+	const npc = npcResult.rows[0];
 	const wallet = walletResult.rowCount > 0 ? walletResult.rows[0] : { balance: 0 };
     const player = playerResult.rows[0];
     const stats = statsResult.rows[0];
@@ -517,6 +527,11 @@ app.get("/profile", requireAuth, async (req, res) => {
 	  stats,
 	  wallet: {
 		cash: wallet.balance
+	  },
+	  npc: {
+		strength: npc.strength,
+		perception: npc.perception,
+		agility: npc.agility
 	  }
 	});
 
