@@ -470,39 +470,152 @@ app.get("/profile", requireAuth, async (req, res) => {
   try {
     const userId = req.userId;
 
+    // 1) PLAYER
     const playerResult = await pool.query(
       "SELECT id, username, mmr FROM players WHERE id = $1",
       [userId]
     );
 
-    if (playerResult.rows.length === 0) {
+    if (playerResult.rowCount === 0) {
       return res.status(404).json({ error: "Player not found" });
     }
 
+    const player = playerResult.rows[0];
+
+    // 2) STATS
     const statsResult = await pool.query(
       "SELECT matches_played, wins, kills, deaths FROM player_stats WHERE player_id = $1",
       [userId]
     );
 
-    const player = playerResult.rows[0];
-    const stats = statsResult.rows[0] || {
-      matches_played: 0,
-      wins: 0,
-      kills: 0,
-      deaths: 0
-    };
+    if (statsResult.rowCount === 0) {
+      return res.status(500).json({ error: "BROKEN_ACCOUNT_STATE" });
+    }
 
+    const stats = statsResult.rows[0];
+
+    // 3) NPC
+    const npcResult = await pool.query(
+      "SELECT strength, perception, agility FROM player_npcs WHERE player_id = $1",
+      [userId]
+    );
+
+    if (npcResult.rowCount === 0) {
+      return res.status(500).json({ error: "BROKEN_ACCOUNT_STATE" });
+    }
+
+    const npc = npcResult.rows[0];
+
+    // 4) WALLET (cash)
+    const walletResult = await pool.query(
+      `
+      SELECT pw.balance
+      FROM player_wallets pw
+      JOIN currencies c ON c.id = pw.currency_id
+      WHERE pw.player_id = $1 AND c.key = 'cash'
+      `,
+      [userId]
+    );
+
+    if (walletResult.rowCount === 0) {
+      return res.status(500).json({ error: "BROKEN_ACCOUNT_STATE" });
+    }
+
+    const wallet = walletResult.rows[0];
+
+    // 5) EQUIPMENT
+    const equipmentResult = await pool.query(
+      `
+      SELECT pe.player_item_id, idf.key AS item_def_key
+      FROM player_equipment pe
+      LEFT JOIN player_items pi ON pi.id = pe.player_item_id
+      LEFT JOIN item_defs idf ON idf.id = pi.item_def_id
+      WHERE pe.player_id = $1 AND pe.slot = 'weapon_primary'
+      `,
+      [userId]
+    );
+
+    if (equipmentResult.rowCount === 0) {
+      return res.status(500).json({ error: "BROKEN_ACCOUNT_STATE" });
+    }
+
+    const equipmentRow = equipmentResult.rows[0];
+
+    // 6) INVENTORY
+    const inventoryResult = await pool.query(
+      `
+      SELECT
+        pi.id AS player_item_id,
+        idf.id AS item_def_id,
+        idf.key AS item_def_key,
+        idf.base_props
+      FROM player_items pi
+      JOIN item_defs idf ON idf.id = pi.item_def_id
+      WHERE pi.player_id = $1
+      `,
+      [userId]
+    );
+
+    const inventory = inventoryResult.rows.map(row => ({
+      player_item_id: row.player_item_id,
+      item_def_id: row.item_def_id,
+      item_def_key: row.item_def_key,
+      base_props: row.base_props
+    }));
+
+    // 7) STORE
+    const storeResult = await pool.query(
+      `
+      SELECT
+        id,
+        key,
+        base_props
+      FROM item_defs
+      WHERE is_active = true
+        AND category = 'weapon'
+      ORDER BY id
+      `
+    );
+
+    const store = storeResult.rows.map(row => ({
+      item_def_id: row.id,
+      item_def_key: row.key,
+      name: row.base_props?.name || row.key,
+      icon_key: row.base_props?.icon_key || null,
+      price_cash: row.base_props?.price_cash || 0
+    }));
+
+    // 8) FINAL RESPONSE
     return res.json({
-      id: player.id,
-      username: player.username,
-      mmr: player.mmr,
+      player: {
+        id: player.id,
+        username: player.username,
+        mmr: player.mmr
+      },
       stats: {
         matches_played: stats.matches_played,
         wins: stats.wins,
         kills: stats.kills,
         deaths: stats.deaths
-      }
+      },
+      npc: {
+        strength: npc.strength,
+        perception: npc.perception,
+        agility: npc.agility
+      },
+      wallet: {
+        cash: wallet.balance
+      },
+      equipment: {
+        weapon_primary: {
+          player_item_id: equipmentRow.player_item_id || null,
+          item_def_key: equipmentRow.item_def_key || null
+        }
+      },
+      inventory,
+      store
     });
+
   } catch (err) {
     console.error("PROFILE ERROR:", err);
     res.status(500).json({ error: err.message });
