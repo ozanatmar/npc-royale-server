@@ -469,7 +469,33 @@ Returns unified player profile:
 Requires Authorization Bearer access_token
 */
 app.get("/profile", requireAuth, async (req, res) => {
-  res.json({ ok: true, userId: req.userId });
+  try {
+    const userId = req.userId;
+
+    console.log("PROFILE START:", userId);
+
+    const playerResult = await pool.query(
+      "SELECT id, username, mmr FROM players WHERE id = $1",
+      [userId]
+    );
+    console.log("PLAYERS OK");
+
+    const statsResult = await pool.query(
+      "SELECT matches_played, wins, kills, deaths FROM player_stats WHERE player_id = $1",
+      [userId]
+    );
+    console.log("STATS OK");
+
+    res.json({
+      ok: true,
+      playerRows: playerResult.rows,
+      statsRows: statsResult.rows
+    });
+
+  } catch (err) {
+    console.error("PROFILE ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
 });
 /*
 app.get("/profile", requireAuth, async (req, res) => {
