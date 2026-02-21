@@ -19,6 +19,13 @@ const { Pool } = require("pg");
 const { v4: uuidv4 } = require("uuid");
 const { createClient } = require("@supabase/supabase-js");
 
+
+
+
+
+
+
+
 /*
 =========================================================
 SUPABASE AUTH CLIENT
@@ -36,6 +43,18 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
+
+
+
+
+
+
+
+
+
+
+
+
 
 /*
 =========================================================
@@ -1079,14 +1098,25 @@ app.post("/equipment/equip", requireAuth, async (req, res) => {
 
 
 
-
-
+/*
+=========================================================
+PLAYER: UPDATE USERNAME
+=========================================================
+- Validate length and format
+- Check current username
+- Check uniqueness
+- Update
+*/
 app.post("/profile/update-username", requireAuth, async (req, res) => {
   try {
     const userId = req.userId;
     const { username } = req.body;
 
-    // Validate
+    /*
+    =========================================================
+    1) BASIC VALIDATION
+    =========================================================
+    */
     if (!username || username.length < 3 || username.length > 20) {
       return res.status(400).json({ error: "INVALID_LENGTH" });
     }
@@ -1096,33 +1126,67 @@ app.post("/profile/update-username", requireAuth, async (req, res) => {
       return res.status(400).json({ error: "INVALID_FORMAT" });
     }
 
-    // Friendly check (optional, UNIQUE constraint is still the real protection)
-    const existing = await pool.query(
-      "SELECT id FROM players WHERE username = $1",
-      [username]
+    /*
+    =========================================================
+    2) CHECK CURRENT USERNAME
+    =========================================================
+    */
+    const current = await pool.query(
+      "SELECT username FROM players WHERE id = $1",
+      [userId]
     );
 
-    if (existing.rows.length > 0) {
+    if (current.rowCount === 0) {
+      return res.status(500).json({ error: "BROKEN_ACCOUNT_STATE" });
+    }
+
+    if (current.rows[0].username === username) {
+      return res.status(400).json({ error: "SAME_USERNAME" });
+    }
+
+    /*
+    =========================================================
+    3) CHECK UNIQUENESS
+    =========================================================
+    */
+    const existing = await pool.query(
+      "SELECT id FROM players WHERE username = $1 AND id <> $2",
+      [username, userId]
+    );
+
+    if (existing.rowCount > 0) {
       return res.status(400).json({ error: "USERNAME_TAKEN" });
     }
 
+    /*
+    =========================================================
+    4) UPDATE
+    =========================================================
+    */
     await pool.query(
       "UPDATE players SET username = $1 WHERE id = $2",
       [username, userId]
     );
 
-    res.json({ ok: true });
+    return res.json({ ok: true });
+
   } catch (err) {
     console.error("UPDATE USERNAME ERROR:", err);
 
-    // unique violation fallback
     if (err.code === "23505") {
       return res.status(400).json({ error: "USERNAME_TAKEN" });
     }
 
-    res.status(500).json({ error: "SERVER_ERROR" });
+    return res.status(500).json({ error: "SERVER_ERROR" });
   }
 });
+
+
+
+
+
+
+
 
 /*
 =========================================================
