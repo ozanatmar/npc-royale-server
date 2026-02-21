@@ -1,4 +1,4 @@
-console.log("NEW SERVER VERSION");
+console.log("-*-*-*-*- NEW SERVER VERSION -*-*-*-*-");
 
 require("dotenv").config();
 
@@ -676,4 +676,9 @@ const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+});
+
+
+app.get("/test-auth", requireAuth, (req, res) => {
+  res.json({ ok: true, userId: req.userId });
 });
