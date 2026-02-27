@@ -776,6 +776,8 @@ app.get("/profile", requireAuth, async (req, res) => {
         pi.id AS player_item_id,
         idf.id AS item_def_id,
         idf.key AS item_def_key,
+		pi.level,
+		pi.instance_props,
         idf.base_props
       FROM player_items pi
       JOIN item_defs idf ON idf.id = pi.item_def_id
@@ -788,6 +790,8 @@ app.get("/profile", requireAuth, async (req, res) => {
       player_item_id: row.player_item_id,
       item_def_id: row.item_def_id,
       item_def_key: row.item_def_key,
+	  level: row.level,
+	  instance_props: row.instance_props || null,
       base_props: row.base_props
     }));
 
